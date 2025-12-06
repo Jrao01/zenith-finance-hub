@@ -51,7 +51,7 @@ export interface Ingreso {
   categoria: string;
 }
 
-export type MonedaCode = 'USD' | 'EUR' | 'MXN' | 'COP' | 'ARS' | 'PEN' | 'CLP' | 'BRL';
+export type MonedaCode = 'BS' | 'USD' | 'EUR' | 'MXN' | 'COP' | 'ARS' | 'PEN' | 'CLP' | 'BRL';
 
 export interface TipoCambio {
   moneda: MonedaCode;

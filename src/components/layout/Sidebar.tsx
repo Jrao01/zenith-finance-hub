@@ -21,7 +21,7 @@ const navItems = [
   { to: "/deudas", icon: CreditCard, label: "Deudas" },
   { to: "/abonos", icon: ArrowDownCircle, label: "Abonos" },
   { to: "/ingresos", icon: Wallet, label: "Ingresos" },
-  { to: "/divisas", icon: DollarSign, label: "Divisas" },
+//  { to: "/divisas", icon: DollarSign, label: "Divisas" },
 ];
 
 export const Sidebar = () => {

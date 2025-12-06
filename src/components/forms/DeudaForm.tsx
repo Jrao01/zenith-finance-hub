@@ -30,6 +30,7 @@ interface DeudaFormProps {
 
 const monedas: { code: MonedaCode; label: string }[] = [
   { code: "USD", label: "Dólar (USD)" },
+  { code: "BS", label: "Bolivar (BS)" },
   { code: "EUR", label: "Euro (EUR)" },
   { code: "MXN", label: "Peso Mexicano (MXN)" },
   { code: "COP", label: "Peso Colombiano (COP)" },
