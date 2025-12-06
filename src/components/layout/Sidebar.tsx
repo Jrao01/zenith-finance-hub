@@ -1,18 +1,19 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CreditCard,
   ArrowDownCircle,
   Wallet,
   DollarSign,
-  Settings,
   Menu,
   X,
-  TrendingUp,
+  LogOut,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import zenithLogo from "@/assets/zenith-logo.png";
 
 const navItems = [
@@ -26,6 +27,13 @@ const navItems = [
 export const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/auth');
+  };
 
   return (
     <>
@@ -87,17 +95,25 @@ export const Sidebar = () => {
             })}
           </nav>
 
-          {/* Footer */}
-          <div className="border-t border-sidebar-border p-4">
+          {/* User & Logout */}
+          <div className="border-t border-sidebar-border p-4 space-y-3">
             <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent/50 px-4 py-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sidebar-primary">
-                <TrendingUp className="h-5 w-5 text-sidebar-primary-foreground" />
+                <User className="h-5 w-5 text-sidebar-primary-foreground" />
               </div>
-              <div>
-                <p className="text-sm font-medium text-sidebar-foreground">Control Total</p>
-                <p className="text-xs text-sidebar-foreground/60">Tus finanzas en orden</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.nombre}</p>
+                <p className="text-xs text-sidebar-foreground/60 truncate">{user?.email}</p>
               </div>
             </div>
+            <Button
+              variant="ghost"
+              onClick={handleLogout}
+              className="w-full justify-start gap-3 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            >
+              <LogOut className="h-5 w-5" />
+              Cerrar Sesión
+            </Button>
           </div>
         </div>
       </aside>
