@@ -73,10 +73,23 @@ const AbonosPage = () => {
     }
   };
 
+  const currencyMap: Record<string, string> = {
+    BS: "VES",
+    USD: "USD",
+    EUR: "EUR",
+    MXN: "MXN",
+    COP: "COP",
+    ARS: "ARS",
+    PEN: "PEN",
+    CLP: "CLP",
+    BRL: "BRL",
+  };
+
   const formatMoney = (amount: number, currency = "MXN") => {
+    const cur = currencyMap[currency] ?? currency;
     return new Intl.NumberFormat("es-MX", {
       style: "currency",
-      currency,
+      currency: cur,
     }).format(amount);
   };
 

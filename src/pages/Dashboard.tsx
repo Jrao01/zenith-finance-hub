@@ -65,10 +65,23 @@ const Dashboard = () => {
     setShowDeudaForm(true);
   };
 
+  const currencyMap: Record<string, string> = {
+    BS: "VES",
+    USD: "USD",
+    EUR: "EUR",
+    MXN: "MXN",
+    COP: "COP",
+    ARS: "ARS",
+    PEN: "PEN",
+    CLP: "CLP",
+    BRL: "BRL",
+  };
+
   const formatMoney = (amount: number, currency = "MXN") => {
+    const cur = currencyMap[currency] ?? currency;
     return new Intl.NumberFormat("es-MX", {
       style: "currency",
-      currency,
+      currency: cur,
     }).format(amount);
   };
 
@@ -153,7 +166,7 @@ const Dashboard = () => {
               </Card>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                {deudas.map((deuda) => (
+                {deudas.filter(d => d.estado_pago !== "pagada").map((deuda) => (
                   <DeudaCard
                     key={deuda.id_deuda}
                     deuda={deuda}

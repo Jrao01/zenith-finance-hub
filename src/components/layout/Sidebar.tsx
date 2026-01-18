@@ -17,10 +17,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import zenithLogo from "@/assets/zenith-logo.png";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/deudas", icon: CreditCard, label: "Deudas" },
+  { to: "/", icon: LayoutDashboard, label: "Inicio" },
+  { to: "/deudas", icon: CreditCard, label: "Historial de Deudas" },
   { to: "/abonos", icon: ArrowDownCircle, label: "Abonos" },
-  { to: "/ingresos", icon: Wallet, label: "Ingresos" },
+//  { to: "/ingresos", icon: Wallet, label: "Ingresos" },
 //  { to: "/divisas", icon: DollarSign, label: "Divisas" },
 ];
 

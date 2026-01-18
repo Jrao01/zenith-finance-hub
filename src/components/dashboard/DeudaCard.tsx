@@ -38,10 +38,23 @@ export const DeudaCard = ({ deuda, onAddAbono, onEdit, onDelete }: DeudaCardProp
   const progreso = ((montoTotal - saldoRestante) / montoTotal) * 100;
   const abonos = getAbonosByDeuda(deuda.id_deuda);
 
+  const currencyMap: Record<string, string> = {
+    BS: "VES",
+    USD: "USD",
+    EUR: "EUR",
+    MXN: "MXN",
+    COP: "COP",
+    ARS: "ARS",
+    PEN: "PEN",
+    CLP: "CLP",
+    BRL: "BRL",
+  };
+
   const formatMoney = (amount: number) => {
+    const currency = currencyMap[deuda.moneda] ?? deuda.moneda;
     return new Intl.NumberFormat("es-MX", {
       style: "currency",
-      currency: deuda.moneda,
+      currency,
     }).format(amount);
   };
 

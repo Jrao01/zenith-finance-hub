@@ -29,6 +29,7 @@ interface AbonoFormProps {
 }
 
 const monedas: { code: MonedaCode; label: string }[] = [
+  { code: "BS", label: "Bolivar (BS)" },
   { code: "USD", label: "Dólar (USD)" },
   { code: "EUR", label: "Euro (EUR)" },
   { code: "MXN", label: "Peso Mexicano (MXN)" },
@@ -40,7 +41,7 @@ const monedas: { code: MonedaCode; label: string }[] = [
 export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda }: AbonoFormProps) => {
   const [formData, setFormData] = useState({
     monto_abonado: 0,
-    moneda: deuda?.moneda || "MXN",
+    moneda: deuda?.moneda || "BS",
     tipo_cambio: 1,
     nota: "",
   });
@@ -92,11 +93,24 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda }: AbonoFormPro
     });
   };
 
+  const currencyMap: Record<string, string> = {
+    BS: "VES",
+    USD: "USD",
+    EUR: "EUR",
+    MXN: "MXN",
+    COP: "COP",
+    ARS: "ARS",
+    PEN: "PEN",
+    CLP: "CLP",
+    BRL: "BRL",
+  };
+
   const formatMoney = (amount: number) => {
     if (!deuda) return "$0.00";
+    const currency = currencyMap[deuda.moneda] ?? deuda.moneda;
     return new Intl.NumberFormat("es-MX", {
       style: "currency",
-      currency: deuda.moneda,
+      currency,
     }).format(amount);
   };
 
