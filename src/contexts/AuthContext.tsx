@@ -1,91 +1,101 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { Usuario } from '@/types/finance';
 
-interface AuthUser extends Usuario {
-  password: string;
-}
+// URL base del backend
+const API_URL = 'http://localhost:3000';
+
+// Keys para localStorage
+const CURRENT_USER_KEY = 'zenith_current_user';
+const TOKEN_KEY = 'zenith_token';
 
 interface AuthContextType {
   user: Usuario | null;
+  token: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => { success: boolean; error?: string };
-  register: (nombre: string, email: string, password: string) => { success: boolean; error?: string };
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (nombre: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USERS_KEY = 'zenith_users';
-const CURRENT_USER_KEY = 'zenith_current_user';
-
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<Usuario | null>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
+    // Recuperar usuario y token del localStorage al iniciar
     const storedUser = localStorage.getItem(CURRENT_USER_KEY);
-    if (storedUser) {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    if (storedUser && storedToken) {
       setUser(JSON.parse(storedUser));
+      setToken(storedToken);
     }
   }, []);
 
-  const getUsers = (): AuthUser[] => {
-    const data = localStorage.getItem(USERS_KEY);
-    return data ? JSON.parse(data) : [];
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: data.message || 'Error al iniciar sesión' };
+      }
+
+      // Guardar usuario y token
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(data.user));
+      localStorage.setItem(TOKEN_KEY, data.token);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error en login:', error);
+      return { success: false, error: 'Error de conexión con el servidor' };
+    }
   };
 
-  const saveUsers = (users: AuthUser[]) => {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  };
+  const register = async (nombre: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nombre, email, password }),
+      });
 
-  const login = (email: string, password: string) => {
-    const users = getUsers();
-    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (!foundUser) {
-      return { success: false, error: 'Usuario no encontrado' };
+      const data = await response.json();
+
+      if (!response.ok) {
+        return { success: false, error: data.message || 'Error al registrar usuario' };
+      }
+
+      // Después del registro exitoso, hacer login automáticamente
+      const loginResult = await login(email, password);
+      return loginResult;
+    } catch (error) {
+      console.error('Error en register:', error);
+      return { success: false, error: 'Error de conexión con el servidor' };
     }
-    
-    if (foundUser.password !== password) {
-      return { success: false, error: 'Contraseña incorrecta' };
-    }
-
-    const { password: _, ...userWithoutPassword } = foundUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userWithoutPassword));
-    return { success: true };
-  };
-
-  const register = (nombre: string, email: string, password: string) => {
-    const users = getUsers();
-    
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { success: false, error: 'Este correo ya está registrado' };
-    }
-
-    const newUser: AuthUser = {
-      id_usuario: users.length > 0 ? Math.max(...users.map(u => u.id_usuario)) + 1 : 1,
-      nombre,
-      email,
-      moneda_preferida: 'USD',
-      password
-    };
-
-    users.push(newUser);
-    saveUsers(users);
-
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userWithoutPassword));
-    return { success: true };
   };
 
   const logout = () => {
     setUser(null);
+    setToken(null);
     localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem(TOKEN_KEY);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user && !!token, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

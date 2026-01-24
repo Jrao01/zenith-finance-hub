@@ -7,12 +7,13 @@ import { AbonoForm } from "@/components/forms/AbonoForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  getDeudas,
-  calcularSaldoDeuda,
-  calcularTotalDeudas,
-  getAbonos,
-} from "@/lib/storage";
+import { 
+  apiGetDeudas, 
+  apiGetAbonos, 
+  apiGetDashboard,
+  DashboardData 
+} from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Deuda, Abono } from "@/types/finance";
 import {
   CreditCard,
@@ -21,29 +22,70 @@ import {
   Plus,
   ArrowUpRight,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { format, isAfter, isBefore, addDays } from "date-fns";
 import { es } from "date-fns/locale";
 
 const Dashboard = () => {
+  const { user } = useAuth();
   const [deudas, setDeudas] = useState<Deuda[]>([]);
+  const [abonos, setAbonos] = useState<Abono[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const [showDeudaForm, setShowDeudaForm] = useState(false);
   const [showAbonoForm, setShowAbonoForm] = useState(false);
   const [selectedDeuda, setSelectedDeuda] = useState<Deuda | null>(null);
   const [editingDeuda, setEditingDeuda] = useState<Deuda | null>(null);
 
-  const loadData = () => {
-    setDeudas(getDeudas());
+  const loadData = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const deudasRes = await apiGetDeudas(user.id_usuario);
+      const abonosRes = await apiGetAbonos({ id_usuario: user.id_usuario });
+      const statsRes = await apiGetDashboard(user.id_usuario);
+      
+      if (deudasRes.success) setDeudas(deudasRes.data || []);
+      if (abonosRes.success) setAbonos(abonosRes.data || []);
+      if (statsRes.success) setDashboardData(statsRes.data || null);
+    } catch (error) {
+      console.error("Error cargando datos del dashboard:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
-  const totalDeudas = calcularTotalDeudas();
-  const deudasActivas = deudas.filter((d) => d.estado_pago !== "pagada").length;
-  const abonos = getAbonos();
-  const ultimosAbonos = abonos.slice(-5).reverse();
+  const totalDeudasValue = dashboardData?.total_deudas || 0;
+  const deudasActivasCountValue = dashboardData?.deudas_pendientes || 0;
+  const deudasPagadasCountValue = dashboardData?.deudas_pagadas || 0;
+  const recentAbonos = abonos.slice(0, 5);
+
+  const currencyMap: Record<string, string> = {
+    BS: "VES",
+    USD: "USD",
+    EUR: "EUR",
+    MXN: "MXN",
+    COP: "COP",
+    ARS: "ARS",
+    PEN: "PEN",
+    CLP: "CLP",
+    BRL: "BRL",
+  };
+
+  const formatMoney = (amount: number, currency = "USD") => {
+    const cur = currencyMap[currency] ?? currency;
+    return new Intl.NumberFormat("es-MX", {
+      style: "currency",
+      currency: cur,
+    }).format(amount);
+  };
 
   // Próximos vencimientos (próximos 30 días)
   const hoy = new Date();
@@ -65,25 +107,16 @@ const Dashboard = () => {
     setShowDeudaForm(true);
   };
 
-  const currencyMap: Record<string, string> = {
-    BS: "VES",
-    USD: "USD",
-    EUR: "EUR",
-    MXN: "MXN",
-    COP: "COP",
-    ARS: "ARS",
-    PEN: "PEN",
-    CLP: "CLP",
-    BRL: "BRL",
-  };
-
-  const formatMoney = (amount: number, currency = "MXN") => {
-    const cur = currencyMap[currency] ?? currency;
-    return new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency: cur,
-    }).format(amount);
-  };
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+          <h2 className="text-xl font-semibold italic text-muted-foreground">Preparando tu resumen...</h2>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
@@ -109,8 +142,8 @@ const Dashboard = () => {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Deudas"
-            value={formatMoney(totalDeudas)}
-            subtitle={`${deudasActivas} deudas activas`}
+            value={formatMoney(totalDeudasValue)}
+            subtitle={`${deudasActivasCountValue} deudas activas`}
             icon={<CreditCard className="h-6 w-6 text-primary" />}
             trend="neutral"
           />
@@ -136,7 +169,7 @@ const Dashboard = () => {
           />
           <StatCard
             title="Deudas Pagadas"
-            value={deudas.filter((d) => d.estado_pago === "pagada").length.toString()}
+            value={deudasPagadasCountValue.toString()}
             subtitle="Completadas"
             icon={<ArrowUpRight className="h-6 w-6 text-success" />}
             trend="up"
@@ -147,8 +180,8 @@ const Dashboard = () => {
           {/* Deudas List */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Mis Deudas</h2>
-              <Badge variant="secondary">{deudasActivas} activas</Badge>
+              <h2 className="text-xl font-semibold">Mis Deudas Recientes</h2>
+              <Badge variant="secondary">{deudasActivasCountValue} activas</Badge>
             </div>
             {deudas.length === 0 ? (
               <Card>
@@ -166,7 +199,7 @@ const Dashboard = () => {
               </Card>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                {deudas.filter(d => d.estado_pago !== "pagada").map((deuda) => (
+                {deudas.filter(d => d.estado_pago !== "pagada").slice(0, 4).map((deuda) => (
                   <DeudaCard
                     key={deuda.id_deuda}
                     deuda={deuda}
@@ -195,24 +228,31 @@ const Dashboard = () => {
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {proximosVencimientos.map((deuda) => (
-                      <div
-                        key={deuda.id_deuda}
-                        className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{deuda.descripcion}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {format(new Date(deuda.fecha_pago_objetivo), "dd MMM yyyy", {
-                              locale: es,
-                            })}
-                          </p>
+                    {proximosVencimientos.map((deuda) => {
+                       const montoTotal = deuda.interes_aplicado 
+                        ? Number(deuda.monto_total) + Number(deuda.monto_interes || 0)
+                        : Number(deuda.monto_total);
+                       const saldo = Math.max(0, montoTotal - Number(deuda.total_abonado || 0));
+                       
+                       return (
+                        <div
+                          key={deuda.id_deuda}
+                          className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{deuda.descripcion}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {format(new Date(deuda.fecha_pago_objetivo), "dd MMM yyyy", {
+                                locale: es,
+                              })}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold">
+                            {formatMoney(saldo, deuda.moneda)}
+                          </span>
                         </div>
-                        <span className="text-sm font-semibold">
-                          {formatMoney(calcularSaldoDeuda(deuda), deuda.moneda)}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -227,14 +267,15 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {ultimosAbonos.length === 0 ? (
+                {recentAbonos.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     Sin abonos registrados
                   </p>
                 ) : (
                   <div className="space-y-3">
-                    {ultimosAbonos.map((abono) => {
-                      const deuda = deudas.find((d) => d.id_deuda === abono.id_deuda);
+                    {recentAbonos.map((abono) => {
+                      // @ts-ignore - Deuda information is joined in backend
+                      const deudaInfo = abono.Deuda;
                       return (
                         <div
                           key={abono.id_abono}
@@ -242,7 +283,7 @@ const Dashboard = () => {
                         >
                           <div>
                             <p className="text-sm font-medium">
-                              {deuda?.descripcion || "Deuda"}
+                              {deudaInfo?.descripcion || "Deuda"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {format(new Date(abono.fecha_abono), "dd MMM yyyy", {
@@ -251,7 +292,7 @@ const Dashboard = () => {
                             </p>
                           </div>
                           <span className="text-sm font-semibold text-accent">
-                            -{formatMoney(abono.monto_abonado, abono.moneda)}
+                            -{formatMoney(Number(abono.monto_abonado), abono.moneda)}
                           </span>
                         </div>
                       );

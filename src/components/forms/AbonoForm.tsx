@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Deuda, Abono, MonedaCode } from "@/types/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { saveAbono, getNextAbonoId, calcularSaldoDeuda, saveDeuda } from "@/lib/storage";
+import { apiCreateAbono, apiGetAbonosByDeuda, apiGetDeudas } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface AbonoFormProps {
@@ -38,20 +39,100 @@ const monedas: { code: MonedaCode; label: string }[] = [
   { code: "PEN", label: "Sol Peruano (PEN)" },
 ];
 
-export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda }: AbonoFormProps) => {
+export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }: AbonoFormProps) => {
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [saldoActual, setSaldoActual] = useState(0);
+  const [deudas, setDeudas] = useState<Deuda[]>([]);
+  const [selectedDeudaId, setSelectedDeudaId] = useState<number | null>(null);
+  const [currentDeuda, setCurrentDeuda] = useState<Deuda | null>(null);
+
   const [formData, setFormData] = useState({
     monto_abonado: 0,
-    moneda: deuda?.moneda || "BS",
+    moneda: "BS",
     tipo_cambio: 1,
     nota: "",
   });
 
-  const saldoActual = deuda ? calcularSaldoDeuda(deuda) : 0;
+  // Efecto para sincronizar cuando se abre con una deuda específica
+  useEffect(() => {
+    if (open) {
+      if (initialDeuda) {
+        setCurrentDeuda(initialDeuda);
+        setSelectedDeudaId(initialDeuda.id_deuda);
+        setFormData(prev => ({
+          ...prev,
+          moneda: initialDeuda.moneda
+        }));
+      } else {
+        // Si no hay deuda inicial, resetear selección
+        setCurrentDeuda(null);
+        setSelectedDeudaId(null);
+      }
+    }
+  }, [open, initialDeuda]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Cargar deudas pendientes del usuario
+  useEffect(() => {
+    const fetchDeudas = async () => {
+      if (user && open && !initialDeuda) {
+        const result = await apiGetDeudas(user.id_usuario);
+        if (result.success && result.data) {
+          const pendientes = result.data.filter(d => d.estado_pago !== 'pagada');
+          setDeudas(pendientes);
+          
+          if (pendientes.length > 0 && !selectedDeudaId) {
+            updateSelectedDeuda(pendientes[0].id_deuda, pendientes);
+          }
+        }
+      }
+    };
+
+    fetchDeudas();
+  }, [user, open, initialDeuda]);
+
+  const updateSelectedDeuda = (deudaId: number, list: Deuda[]) => {
+    const found = list.find(d => d.id_deuda === deudaId);
+    if (found) {
+      setSelectedDeudaId(deudaId);
+      setCurrentDeuda(found);
+      setFormData(prev => ({ ...prev, moneda: found.moneda }));
+    }
+  };
+
+  const handleDeudaChange = (value: string) => {
+    updateSelectedDeuda(parseInt(value), deudas);
+  };
+
+  // Calcular saldo actual
+  useEffect(() => {
+    const fetchSaldo = async () => {
+      if (currentDeuda) {
+        const result = await apiGetAbonosByDeuda(currentDeuda.id_deuda);
+        const montoBase = Number(currentDeuda.monto_total);
+        const interes = currentDeuda.interes_aplicado ? Number(currentDeuda.monto_interes || 0) : 0;
+        const totalDeuda = montoBase + interes;
+
+        if (result.success && result.data) {
+          setSaldoActual(Math.max(0, totalDeuda - result.data.total_abonado));
+        } else {
+          setSaldoActual(totalDeuda);
+        }
+      }
+    };
+
+    if (open && currentDeuda) {
+      fetchSaldo();
+    }
+  }, [open, currentDeuda]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!deuda) return;
+    if (!currentDeuda) {
+      toast.error("Selecciona una deuda primero");
+      return;
+    }
 
     if (!formData.monto_abonado || formData.monto_abonado <= 0) {
       toast.error("El monto debe ser mayor a cero");
@@ -59,157 +140,155 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda }: AbonoFormPro
     }
 
     if (formData.monto_abonado > saldoActual) {
-      toast.error("El abono no puede ser mayor al saldo pendiente");
+      toast.error("No puedes abonar más del saldo pendiente");
       return;
     }
 
-    const nuevoRestante = saldoActual - formData.monto_abonado;
+    setIsLoading(true);
+    try {
+      const result = await apiCreateAbono({
+        id_deuda: currentDeuda.id_deuda,
+        monto_abonado: formData.monto_abonado,
+        moneda: formData.moneda,
+        tipo_cambio: formData.tipo_cambio,
+        nota: formData.nota,
+      });
 
-    const abono: Abono = {
-      id_abono: getNextAbonoId(),
-      id_deuda: deuda.id_deuda,
-      fecha_abono: new Date().toISOString().split("T")[0],
-      monto_abonado: formData.monto_abonado,
-      moneda: formData.moneda,
-      tipo_cambio: formData.tipo_cambio,
-      restante_actual: nuevoRestante,
-      nota: formData.nota,
-    };
-
-    saveAbono(abono);
-
-    // Actualizar estado de la deuda
-    const nuevoEstado = nuevoRestante <= 0 ? "pagada" : "en_progreso";
-    saveDeuda({ ...deuda, estado_pago: nuevoEstado });
-
-    toast.success("Abono registrado exitosamente");
-    onOpenChange(false);
-    onSuccess();
-    setFormData({
-      monto_abonado: 0,
-      moneda: deuda.moneda,
-      tipo_cambio: 1,
-      nota: "",
-    });
+      if (result.success) {
+        toast.success("Abono registrado");
+        onOpenChange(false);
+        onSuccess();
+        setFormData({ monto_abonado: 0, moneda: currentDeuda.moneda, tipo_cambio: 1, nota: "" });
+      } else {
+        toast.error(result.error || "Error al registrar abono");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error de conexión");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const currencyMap: Record<string, string> = {
-    BS: "VES",
-    USD: "USD",
-    EUR: "EUR",
-    MXN: "MXN",
-    COP: "COP",
-    ARS: "ARS",
-    PEN: "PEN",
-    CLP: "CLP",
-    BRL: "BRL",
+    BS: "VES", USD: "USD", EUR: "EUR", MXN: "MXN",
+    COP: "COP", ARS: "ARS", PEN: "PEN", CLP: "CLP", BRL: "BRL",
   };
 
-  const formatMoney = (amount: number) => {
-    if (!deuda) return "$0.00";
-    const currency = currencyMap[deuda.moneda] ?? deuda.moneda;
-    return new Intl.NumberFormat("es-MX", {
-      style: "currency",
-      currency,
-    }).format(amount);
+  const formatMoney = (amount: number, currencyCode?: string) => {
+    const code = currencyCode || (currentDeuda?.moneda || "USD");
+    const currency = currencyMap[code] ?? code;
+    return new Intl.NumberFormat("es-MX", { style: "currency", currency }).format(amount);
   };
-
-  if (!deuda) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar Abono</DialogTitle>
-          <DialogDescription>Agrega un pago a "{deuda.descripcion}"</DialogDescription>
+          <DialogDescription>
+            {currentDeuda 
+              ? `Abono a: ${currentDeuda.descripcion}` 
+              : "Selecciona una deuda para registrar un pago"}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-lg bg-muted/50 p-4 mb-4">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Saldo pendiente</span>
-            <span className="font-bold text-foreground">{formatMoney(saldoActual)}</span>
-          </div>
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Deuda</Label>
+            <Select 
+              value={selectedDeudaId?.toString()} 
+              onValueChange={handleDeudaChange}
+              disabled={!!initialDeuda}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona deuda..." />
+              </SelectTrigger>
+              <SelectContent>
+                {initialDeuda ? (
+                   <SelectItem value={initialDeuda.id_deuda.toString()}>
+                     {initialDeuda.descripcion}
+                   </SelectItem>
+                ) : (
+                  deudas.map(d => (
+                    <SelectItem key={d.id_deuda} value={d.id_deuda.toString()}>
+                      {d.descripcion} ({formatMoney(Number(d.monto_total), d.moneda)})
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {currentDeuda && (
+            <div className="rounded-lg bg-muted/50 p-3 flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Saldo Pendiente:</span>
+              <span className="font-bold">{formatMoney(saldoActual)}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="monto">Monto del Abono *</Label>
+              <Label htmlFor="monto_abono">Monto *</Label>
               <Input
-                id="monto"
+                id="monto_abono"
                 type="number"
-                min="0"
                 step="0.01"
-                max={saldoActual}
-                placeholder="0.00"
                 value={formData.monto_abonado || ""}
-                onChange={(e) =>
-                  setFormData({ ...formData, monto_abonado: parseFloat(e.target.value) || 0 })
-                }
+                onChange={e => setFormData({...formData, monto_abonado: parseFloat(e.target.value) || 0})}
+                disabled={!currentDeuda}
               />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="moneda">Moneda</Label>
-              <Select
-                value={formData.moneda}
-                onValueChange={(value) => setFormData({ ...formData, moneda: value })}
+              <Label>Moneda</Label>
+              <Select 
+                value={formData.moneda} 
+                onValueChange={v => setFormData({...formData, moneda: v})}
+                disabled={!currentDeuda}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {monedas.map((m) => (
-                    <SelectItem key={m.code} value={m.code}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
+                  {monedas.map(m => <SelectItem key={m.code} value={m.code}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {formData.moneda !== deuda.moneda && (
-            <div className="space-y-2">
-              <Label htmlFor="tipoCambio">Tipo de Cambio</Label>
+          {currentDeuda && formData.moneda !== currentDeuda.moneda && (
+            <div className="space-y-2 p-3 border rounded-lg bg-accent/5">
+              <Label htmlFor="tc">Tipo de Cambio</Label>
               <Input
-                id="tipoCambio"
+                id="tc"
                 type="number"
-                min="0"
                 step="0.0001"
-                placeholder="1.0000"
                 value={formData.tipo_cambio}
-                onChange={(e) =>
-                  setFormData({ ...formData, tipo_cambio: parseFloat(e.target.value) || 1 })
-                }
+                onChange={e => setFormData({...formData, tipo_cambio: parseFloat(e.target.value) || 1})}
               />
-              <p className="text-xs text-muted-foreground">
-                1 {formData.moneda} = {formData.tipo_cambio} {deuda.moneda}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                1 {formData.moneda} = {formData.tipo_cambio} {currentDeuda.moneda}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="nota">Nota (opcional)</Label>
+            <Label htmlFor="nota_abono">Nota</Label>
             <Textarea
-              id="nota"
-              placeholder="Ej: Pago de nómina diciembre"
+              id="nota_abono"
+              placeholder="Detalles del pago..."
               value={formData.nota}
-              onChange={(e) => setFormData({ ...formData, nota: e.target.value })}
+              onChange={e => setFormData({...formData, nota: e.target.value})}
+              disabled={!currentDeuda}
             />
           </div>
 
-          <div className="flex gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => onOpenChange(false)}
-            >
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="accent" className="flex-1">
-              Registrar Abono
+            <Button type="submit" variant="accent" className="flex-1" disabled={isLoading || !currentDeuda}>
+              {isLoading ? "Enviando..." : "Confirmar Abono"}
             </Button>
           </div>
         </form>

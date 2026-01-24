@@ -42,7 +42,7 @@ const AuthPage = () => {
       return;
     }
 
-    const result = login(loginEmail, loginPassword);
+    const result = await login(loginEmail, loginPassword);
     
     if (result.success) {
       toast({
@@ -94,7 +94,7 @@ const AuthPage = () => {
       return;
     }
 
-    const result = register(registerName, registerEmail, registerPassword);
+    const result = await register(registerName, registerEmail, registerPassword);
     
     if (result.success) {
       toast({

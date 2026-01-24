@@ -18,7 +18,8 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { saveDeuda, getNextDeudaId } from "@/lib/storage";
+import { apiCreateDeuda, apiUpdateDeuda } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface DeudaFormProps {
@@ -39,12 +40,14 @@ const monedas: { code: MonedaCode; label: string }[] = [
 ];
 
 export const DeudaForm = ({ open, onOpenChange, onSuccess, deudaToEdit }: DeudaFormProps) => {
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<Deuda>>(
     deudaToEdit || {
       descripcion: "",
       acreedor: "",
       monto_total: 0,
-      moneda: "MXN",
+      moneda: "USD",
       fecha_pago_objetivo: "",
       recordatorio: true,
       interes_aplicado: false,
@@ -52,7 +55,7 @@ export const DeudaForm = ({ open, onOpenChange, onSuccess, deudaToEdit }: DeudaF
     }
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.descripcion || !formData.monto_total || !formData.fecha_pago_objetivo) {
@@ -60,35 +63,72 @@ export const DeudaForm = ({ open, onOpenChange, onSuccess, deudaToEdit }: DeudaF
       return;
     }
 
-    const monto_interes = formData.interes_aplicado
-      ? (formData.monto_total || 0) * ((formData.tasa_interes || 0) / 100)
-      : 0;
+    if (!user) {
+      toast.error("Debes iniciar sesión para crear una deuda");
+      return;
+    }
 
-    const deuda: Deuda = {
-      id_deuda: deudaToEdit?.id_deuda || getNextDeudaId(),
-      id_usuario: 1,
-      descripcion: formData.descripcion || "",
-      acreedor: formData.acreedor || "",
-      monto_total: formData.monto_total || 0,
-      moneda: formData.moneda || "MXN",
-      fecha_registro: deudaToEdit?.fecha_registro || new Date().toISOString().split("T")[0],
-      fecha_pago_objetivo: formData.fecha_pago_objetivo || "",
-      estado_pago: deudaToEdit?.estado_pago || "pendiente",
-      recordatorio: formData.recordatorio || false,
-      interes_aplicado: formData.interes_aplicado || false,
-      tasa_interes: formData.tasa_interes || 0,
-      monto_interes,
-    };
+    setIsLoading(true);
 
-    saveDeuda(deuda);
-    toast.success(deudaToEdit ? "Deuda actualizada" : "Deuda registrada exitosamente");
-    onOpenChange(false);
-    onSuccess();
+    try {
+      if (deudaToEdit) {
+        // Actualizar deuda existente
+        const result = await apiUpdateDeuda(deudaToEdit.id_deuda, {
+          descripcion: formData.descripcion || "",
+          acreedor: formData.acreedor || "",
+          monto_total: formData.monto_total || 0,
+          moneda: formData.moneda || "USD",
+          fecha_pago_objetivo: formData.fecha_pago_objetivo || "",
+          recordatorio: formData.recordatorio || false,
+          interes_aplicado: formData.interes_aplicado || false,
+          tasa_interes: formData.tasa_interes || 0,
+        });
+
+        if (result.success) {
+          toast.success("Deuda actualizada exitosamente");
+          onOpenChange(false);
+          onSuccess();
+          resetForm();
+        } else {
+          toast.error(result.error || "Error al actualizar la deuda");
+        }
+      } else {
+        // Crear nueva deuda
+        const result = await apiCreateDeuda({
+          id_usuario: user.id_usuario,
+          descripcion: formData.descripcion || "",
+          acreedor: formData.acreedor || "",
+          monto_total: formData.monto_total || 0,
+          moneda: formData.moneda || "USD",
+          fecha_pago_objetivo: formData.fecha_pago_objetivo || "",
+          recordatorio: formData.recordatorio || false,
+          interes_aplicado: formData.interes_aplicado || false,
+          tasa_interes: formData.tasa_interes || 0,
+        });
+
+        if (result.success) {
+          toast.success("Deuda registrada exitosamente");
+          onOpenChange(false);
+          onSuccess();
+          resetForm();
+        } else {
+          toast.error(result.error || "Error al crear la deuda");
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error de conexión con el servidor");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetForm = () => {
     setFormData({
       descripcion: "",
       acreedor: "",
       monto_total: 0,
-      moneda: "MXN",
+      moneda: "USD",
       fecha_pago_objetivo: "",
       recordatorio: true,
       interes_aplicado: false,
@@ -222,8 +262,8 @@ export const DeudaForm = ({ open, onOpenChange, onSuccess, deudaToEdit }: DeudaF
             <Button type="button" variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="submit" className="flex-1">
-              {deudaToEdit ? "Guardar Cambios" : "Registrar Deuda"}
+            <Button type="submit" className="flex-1" disabled={isLoading}>
+              {isLoading ? "Guardando..." : (deudaToEdit ? "Guardar Cambios" : "Registrar Deuda")}
             </Button>
           </div>
         </form>

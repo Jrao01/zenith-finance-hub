@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AbonoForm } from "@/components/forms/AbonoForm";
-import { getDeudas, getAbonos, calcularSaldoDeuda } from "@/lib/storage";
+import { apiGetDeudas, apiGetAbonos } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Deuda, Abono } from "@/types/finance";
-import { ArrowDownCircle, Search, Plus, TrendingDown } from "lucide-react";
+import { ArrowDownCircle, Search, Plus, TrendingDown, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -17,8 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 
 const AbonosPage = () => {
+  const { user } = useAuth();
   const [deudas, setDeudas] = useState<Deuda[]>([]);
   const [abonos, setAbonos] = useState<Abono[]>([]);
   const [filteredAbonos, setFilteredAbonos] = useState<Abono[]>([]);
@@ -26,16 +29,31 @@ const AbonosPage = () => {
   const [selectedDeuda, setSelectedDeuda] = useState<Deuda | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDeuda, setFilterDeuda] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = () => {
-    setDeudas(getDeudas());
-    const allAbonos = getAbonos();
-    setAbonos(allAbonos);
-    applyFilters(allAbonos, searchTerm, filterDeuda);
+  const loadData = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const deudasRes = await apiGetDeudas(user.id_usuario);
+      const abonosRes = await apiGetAbonos({ id_usuario: user.id_usuario });
+      
+      if (deudasRes.success) setDeudas(deudasRes.data || []);
+      if (abonosRes.success) {
+        setAbonos(abonosRes.data || []);
+        applyFilters(abonosRes.data || [], searchTerm, filterDeuda, deudasRes.data || []);
+      }
+    } catch (error) {
+      console.error("Error cargando abonos:", error);
+      toast.error("Error al cargar los datos");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const applyFilters = (data: Abono[], search: string, deudaId: string) => {
-    let filtered = data;
+  const applyFilters = (data: Abono[], search: string, deudaId: string, currentDeudas: Deuda[]) => {
+    let filtered = [...data];
 
     if (deudaId !== "all") {
       filtered = filtered.filter((a) => a.id_deuda === parseInt(deudaId));
@@ -43,34 +61,38 @@ const AbonosPage = () => {
 
     if (search) {
       filtered = filtered.filter((a) => {
-        const deuda = deudas.find((d) => d.id_deuda === a.id_deuda);
+        // @ts-ignore - Deuda is joined in backend
+        const joinedDeuda = a.Deuda;
+        const localDeuda = currentDeudas.find((d) => d.id_deuda === a.id_deuda);
+        const descripcion = joinedDeuda?.descripcion || localDeuda?.descripcion || "";
+        
         return (
-          deuda?.descripcion.toLowerCase().includes(search.toLowerCase()) ||
+          descripcion.toLowerCase().includes(search.toLowerCase()) ||
           a.nota?.toLowerCase().includes(search.toLowerCase())
         );
       });
     }
 
-    setFilteredAbonos(filtered.reverse());
+    setFilteredAbonos(filtered); // La API ya los trae ordenados
   };
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    applyFilters(abonos, searchTerm, filterDeuda);
+    applyFilters(abonos, searchTerm, filterDeuda, deudas);
   }, [searchTerm, filterDeuda, abonos, deudas]);
 
   const handleNewAbono = () => {
-    if (deudas.filter((d) => d.estado_pago !== "pagada").length === 0) {
+    const activeDeudas = deudas.filter((d) => d.estado_pago !== "pagada");
+    if (activeDeudas.length === 0) {
+      toast.error("No tienes deudas activas para abonar");
       return;
     }
-    const activeDeuda = deudas.find((d) => d.estado_pago !== "pagada");
-    if (activeDeuda) {
-      setSelectedDeuda(activeDeuda);
-      setShowAbonoForm(true);
-    }
+    // Pasamos null para que el formulario habilite el selector de deudas
+    setSelectedDeuda(null);
+    setShowAbonoForm(true);
   };
 
   const currencyMap: Record<string, string> = {
@@ -85,7 +107,7 @@ const AbonosPage = () => {
     BRL: "BRL",
   };
 
-  const formatMoney = (amount: number, currency = "MXN") => {
+  const formatMoney = (amount: number, currency = "USD") => {
     const cur = currencyMap[currency] ?? currency;
     return new Intl.NumberFormat("es-MX", {
       style: "currency",
@@ -93,7 +115,7 @@ const AbonosPage = () => {
     }).format(amount);
   };
 
-  const totalAbonado = abonos.reduce((sum, a) => sum + a.monto_abonado, 0);
+  const totalAbonado = abonos.reduce((sum, a) => sum + Number(a.monto_abonado), 0);
 
   return (
     <MainLayout>
@@ -109,7 +131,7 @@ const AbonosPage = () => {
           <Button
             onClick={handleNewAbono}
             className="gap-2"
-            disabled={deudas.filter((d) => d.estado_pago !== "pagada").length === 0}
+            disabled={isLoading || deudas.filter((d) => d.estado_pago !== "pagada").length === 0}
           >
             <Plus className="h-4 w-4" />
             Nuevo Abono
@@ -126,7 +148,7 @@ const AbonosPage = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total Abonado</p>
-                  <p className="text-2xl font-bold">{formatMoney(totalAbonado)}</p>
+                  <p className="text-2xl font-bold">{isLoading ? "---" : formatMoney(totalAbonado)}</p>
                 </div>
               </div>
             </CardContent>
@@ -139,7 +161,7 @@ const AbonosPage = () => {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Pagos Realizados</p>
-                  <p className="text-2xl font-bold">{abonos.length}</p>
+                  <p className="text-2xl font-bold">{isLoading ? "---" : abonos.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -153,7 +175,7 @@ const AbonosPage = () => {
                 <div>
                   <p className="text-sm text-muted-foreground">Promedio por Abono</p>
                   <p className="text-2xl font-bold">
-                    {formatMoney(abonos.length > 0 ? totalAbonado / abonos.length : 0)}
+                    {isLoading ? "---" : formatMoney(abonos.length > 0 ? totalAbonado / abonos.length : 0)}
                   </p>
                 </div>
               </div>
@@ -170,9 +192,10 @@ const AbonosPage = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
+              disabled={isLoading}
             />
           </div>
-          <Select value={filterDeuda} onValueChange={setFilterDeuda}>
+          <Select value={filterDeuda} onValueChange={setFilterDeuda} disabled={isLoading}>
             <SelectTrigger className="w-full sm:w-64">
               <SelectValue placeholder="Filtrar por deuda" />
             </SelectTrigger>
@@ -188,7 +211,12 @@ const AbonosPage = () => {
         </div>
 
         {/* Abonos List */}
-        {filteredAbonos.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+            <p className="text-muted-foreground italic">Cargando historial de abonos...</p>
+          </div>
+        ) : filteredAbonos.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <ArrowDownCircle className="h-12 w-12 text-muted-foreground/50 mb-4" />
@@ -208,7 +236,11 @@ const AbonosPage = () => {
             <CardContent>
               <div className="space-y-4">
                 {filteredAbonos.map((abono) => {
-                  const deuda = deudas.find((d) => d.id_deuda === abono.id_deuda);
+                  // @ts-ignore - Deuda is joined in backend
+                  const joinedDeuda = abono.Deuda;
+                  const localDeuda = deudas.find((d) => d.id_deuda === abono.id_deuda);
+                  const deuda = joinedDeuda || localDeuda;
+                  
                   return (
                     <div
                       key={abono.id_abono}
@@ -234,10 +266,10 @@ const AbonosPage = () => {
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-accent">
-                          -{formatMoney(abono.monto_abonado, abono.moneda)}
+                          -{formatMoney(Number(abono.monto_abonado), abono.moneda)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Restante: {formatMoney(abono.restante_actual, deuda?.moneda)}
+                          Restante: {formatMoney(Number(abono.restante_actual), deuda?.moneda)}
                         </p>
                       </div>
                     </div>

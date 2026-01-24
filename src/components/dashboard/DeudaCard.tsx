@@ -3,8 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { calcularSaldoDeuda, getAbonosByDeuda } from "@/lib/storage";
-import { Calendar, TrendingDown, MoreVertical } from "lucide-react";
+import { Calendar, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -31,12 +30,16 @@ const estadoLabels = {
 };
 
 export const DeudaCard = ({ deuda, onAddAbono, onEdit, onDelete }: DeudaCardProps) => {
-  const saldoRestante = calcularSaldoDeuda(deuda);
+  const totalPagado = Number(deuda.total_abonado || 0);
+  const montoOriginal = Number(deuda.monto_total);
+  const montoInteres = Number(deuda.monto_interes || 0);
+  
   const montoTotal = deuda.interes_aplicado
-    ? deuda.monto_total + deuda.monto_interes
-    : deuda.monto_total;
-  const progreso = ((montoTotal - saldoRestante) / montoTotal) * 100;
-  const abonos = getAbonosByDeuda(deuda.id_deuda);
+    ? montoOriginal + montoInteres
+    : montoOriginal;
+
+  const saldoRestante = Math.max(0, montoTotal - totalPagado);
+  const progreso = montoTotal > 0 ? (totalPagado / montoTotal) * 100 : 0;
 
   const currencyMap: Record<string, string> = {
     BS: "VES",
@@ -102,7 +105,7 @@ export const DeudaCard = ({ deuda, onAddAbono, onEdit, onDelete }: DeudaCardProp
           </div>
           <div className="flex items-center gap-1">
             <TrendingDown className="h-3.5 w-3.5" />
-            <span>{abonos.length} abonos</span>
+            <span>{deuda.abonos_count || 0} abonos</span>
           </div>
         </div>
 
@@ -112,14 +115,16 @@ export const DeudaCard = ({ deuda, onAddAbono, onEdit, onDelete }: DeudaCardProp
           </p>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <Button size="sm" variant="accent" className="flex-1" onClick={() => onAddAbono?.(deuda)}>
-            Agregar Abono
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onEdit?.(deuda)}>
-            Editar
-          </Button>
-        </div>
+        {deuda.estado_pago !== "pagada" && (
+          <div className="flex gap-2 pt-2">
+            <Button size="sm" variant="accent" className="flex-1" onClick={() => onAddAbono?.(deuda)}>
+              Agregar Abono
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onEdit?.(deuda)}>
+              Editar
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

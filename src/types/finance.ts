@@ -19,6 +19,8 @@ export interface Deuda {
   interes_aplicado: boolean;
   tasa_interes: number;
   monto_interes: number;
+  total_abonado?: number;
+  abonos_count?: number;
 }
 
 export interface Abono {

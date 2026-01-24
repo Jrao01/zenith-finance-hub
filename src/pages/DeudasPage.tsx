@@ -13,9 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { getDeudas, deleteDeuda } from "@/lib/storage";
+import { apiGetDeudas, apiDeleteDeuda } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Deuda } from "@/types/finance";
-import { Plus, Search, CreditCard, Filter } from "lucide-react";
+import { Plus, Search, CreditCard, Filter, Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 const DeudasPage = () => {
+  const { user } = useAuth();
   const [deudas, setDeudas] = useState<Deuda[]>([]);
   const [filteredDeudas, setFilteredDeudas] = useState<Deuda[]>([]);
   const [showDeudaForm, setShowDeudaForm] = useState(false);
@@ -38,11 +40,27 @@ const DeudasPage = () => {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadData = () => {
-    const data = getDeudas();
-    setDeudas(data);
-    applyFilters(data, searchTerm, filterStatus);
+  const loadData = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    try {
+      const result = await apiGetDeudas(user.id_usuario);
+      if (result.success && result.data) {
+        setDeudas(result.data);
+        applyFilters(result.data, searchTerm, filterStatus);
+      } else {
+        toast.error(result.error || "Error al cargar las deudas");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error de conexión con el servidor");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const applyFilters = (data: Deuda[], search: string, status: string) => {
@@ -65,7 +83,7 @@ const DeudasPage = () => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     applyFilters(deudas, searchTerm, filterStatus);
@@ -85,12 +103,24 @@ const DeudasPage = () => {
     setDeleteId(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteId) {
-      deleteDeuda(deleteId);
-      toast.success("Deuda eliminada correctamente");
-      loadData();
-      setDeleteId(null);
+      setIsDeleting(true);
+      try {
+        const result = await apiDeleteDeuda(deleteId);
+        if (result.success) {
+          toast.success("Deuda eliminada correctamente");
+          loadData();
+        } else {
+          toast.error(result.error || "Error al eliminar la deuda");
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error("Error de conexión con el servidor");
+      } finally {
+        setIsDeleting(false);
+        setDeleteId(null);
+      }
     }
   };
 
@@ -144,7 +174,12 @@ const DeudasPage = () => {
         </div>
 
         {/* Deudas Grid */}
-        {filteredDeudas.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+            <p className="text-muted-foreground italic">Cargando tus deudas...</p>
+          </div>
+        ) : filteredDeudas.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
               <CreditCard className="h-12 w-12 text-muted-foreground/50 mb-4" />
@@ -198,7 +233,7 @@ const DeudasPage = () => {
         deuda={selectedDeuda}
       />
 
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialog open={deleteId !== null} onOpenChange={() => !isDeleting && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar esta deuda?</AlertDialogTitle>
@@ -207,9 +242,23 @@ const DeudasPage = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Eliminar
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={(e) => {
+                e.preventDefault();
+                confirmDelete();
+              }} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                'Eliminar'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
