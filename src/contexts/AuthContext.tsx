@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import type { Usuario } from '@/types/finance';
 
 // URL base del backend
-const API_URL = 'http://localhost:3000';
+const API_URL = 'https://zeniith-back.onrender.com';
 
 // Keys para localStorage
 const CURRENT_USER_KEY = 'zenith_current_user';

@@ -1,5 +1,5 @@
 // API Service para conectar con el backend
-const API_URL = 'http://localhost:3000';
+const API_URL = 'https://zeniith-back.onrender.com';
 
 // Helper para obtener el token del localStorage
 const getToken = (): string | null => {

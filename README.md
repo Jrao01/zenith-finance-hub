@@ -36,7 +36,7 @@ Zenith Finance Hub es una aplicación moderna y elegante para la gestión de fin
    ```
 
 3. **Configurar API**:
-   Asegúrate de que el backend esté corriendo en `http://localhost:3000`. Puedes cambiar la URL base en `src/lib/api.ts` o en las variables de entorno.
+   La aplicación está configurada para conectar con el backend en `https://zeniith-back.onrender.com`. Puedes cambiar esta configuración en `src/lib/api.ts` y `src/contexts/AuthContext.tsx`.
 
 4. **Iniciar en entorno de desarrollo**:
    ```bash
