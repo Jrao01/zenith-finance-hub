@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { apiCreateAbono, apiGetAbonosByDeuda, apiGetDeudas } from "@/lib/api";
+import { apiCreateAbono, apiUpdateAbono, apiGetAbonosByDeuda, apiGetDeudas } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -27,6 +27,7 @@ interface AbonoFormProps {
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
   deuda: Deuda | null;
+  abonoToEdit?: Abono | null;
 }
 
 const monedas: { code: MonedaCode; label: string }[] = [
@@ -39,7 +40,7 @@ const monedas: { code: MonedaCode; label: string }[] = [
   { code: "PEN", label: "Sol Peruano (PEN)" },
 ];
 
-export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }: AbonoFormProps) => {
+export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda, abonoToEdit }: AbonoFormProps) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [saldoActual, setSaldoActual] = useState(0);
@@ -54,23 +55,46 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }
     nota: "",
   });
 
-  // Efecto para sincronizar cuando se abre con una deuda específica
+  // Efecto para sincronizar cuando se abre
   useEffect(() => {
     if (open) {
-      if (initialDeuda) {
+      if (abonoToEdit) {
+        // Modo edición
+        setFormData({
+          monto_abonado: Number(abonoToEdit.monto_abonado),
+          moneda: abonoToEdit.moneda as MonedaCode,
+          tipo_cambio: Number(abonoToEdit.tipo_cambio || 1),
+          nota: abonoToEdit.nota || "",
+        });
+        setSelectedDeudaId(abonoToEdit.id_deuda);
+        // Necesitamos encontrar la deuda correspondiente
+        if (deudas.length > 0) {
+            const found = deudas.find(d => d.id_deuda === abonoToEdit.id_deuda);
+            if (found) setCurrentDeuda(found);
+        }
+      } else if (initialDeuda) {
+        // Modo creación con deuda preseleccionada
         setCurrentDeuda(initialDeuda);
         setSelectedDeudaId(initialDeuda.id_deuda);
-        setFormData(prev => ({
-          ...prev,
-          moneda: initialDeuda.moneda
-        }));
+        setFormData({
+          monto_abonado: 0,
+          moneda: initialDeuda.moneda as MonedaCode,
+          tipo_cambio: 1,
+          nota: "",
+        });
       } else {
-        // Si no hay deuda inicial, resetear selección
+        // Modo creación desde cero
         setCurrentDeuda(null);
         setSelectedDeudaId(null);
+        setFormData({
+          monto_abonado: 0,
+          moneda: "BS",
+          tipo_cambio: 1,
+          nota: "",
+        });
       }
     }
-  }, [open, initialDeuda]);
+  }, [open, initialDeuda, abonoToEdit, deudas]);
 
   // Cargar deudas pendientes del usuario
   useEffect(() => {
@@ -146,21 +170,33 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }
 
     setIsLoading(true);
     try {
-      const result = await apiCreateAbono({
-        id_deuda: currentDeuda.id_deuda,
-        monto_abonado: formData.monto_abonado,
-        moneda: formData.moneda,
-        tipo_cambio: formData.tipo_cambio,
-        nota: formData.nota,
-      });
+      let result;
+      if (abonoToEdit) {
+        result = await apiUpdateAbono(abonoToEdit.id_abono, {
+          monto_abonado: formData.monto_abonado,
+          moneda: formData.moneda,
+          tipo_cambio: formData.tipo_cambio,
+          nota: formData.nota,
+        });
+      } else {
+        result = await apiCreateAbono({
+          id_deuda: currentDeuda.id_deuda,
+          monto_abonado: formData.monto_abonado,
+          moneda: formData.moneda,
+          tipo_cambio: formData.tipo_cambio,
+          nota: formData.nota,
+        });
+      }
 
       if (result.success) {
-        toast.success("Abono registrado");
+        toast.success(abonoToEdit ? "Abono actualizado" : "Abono registrado");
         onOpenChange(false);
         onSuccess();
-        setFormData({ monto_abonado: 0, moneda: currentDeuda.moneda, tipo_cambio: 1, nota: "" });
+        if (!abonoToEdit) {
+            setFormData({ monto_abonado: 0, moneda: currentDeuda.moneda as MonedaCode, tipo_cambio: 1, nota: "" });
+        }
       } else {
-        toast.error(result.error || "Error al registrar abono");
+        toast.error(result.error || "Error al procesar abono");
       }
     } catch (error) {
       console.error(error);
@@ -185,7 +221,7 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Registrar Abono</DialogTitle>
+          <DialogTitle>{abonoToEdit ? "Editar Abono" : "Registrar Abono"}</DialogTitle>
           <DialogDescription>
             {currentDeuda 
               ? `Abono a: ${currentDeuda.descripcion}` 
@@ -288,7 +324,7 @@ export const AbonoForm = ({ open, onOpenChange, onSuccess, deuda: initialDeuda }
               Cancelar
             </Button>
             <Button type="submit" variant="accent" className="flex-1" disabled={isLoading || !currentDeuda}>
-              {isLoading ? "Enviando..." : "Confirmar Abono"}
+              {isLoading ? "Enviando..." : (abonoToEdit ? "Guardar Cambios" : "Confirmar Abono")}
             </Button>
           </div>
         </form>

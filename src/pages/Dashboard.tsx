@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { format, isAfter, isBefore, addDays } from "date-fns";
 import { es } from "date-fns/locale";
+import { MultiCurrencyDisplay } from "@/components/dashboard/MultiCurrencyDisplay";
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -38,6 +39,7 @@ const Dashboard = () => {
   const [showAbonoForm, setShowAbonoForm] = useState(false);
   const [selectedDeuda, setSelectedDeuda] = useState<Deuda | null>(null);
   const [editingDeuda, setEditingDeuda] = useState<Deuda | null>(null);
+  const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
 
   const loadData = async () => {
     if (!user) return;
@@ -107,6 +109,20 @@ const Dashboard = () => {
     setShowDeudaForm(true);
   };
 
+  // Calcular totales por moneda
+  const deudasPorMoneda = deudas.filter(d => d.estado_pago !== 'pagada').reduce((acc, d) => {
+    const monto = d.interes_aplicado 
+      ? Number(d.monto_total) + Number(d.monto_interes || 0)
+      : Number(d.monto_total);
+    const pagado = Number(d.total_abonado || 0);
+    const saldo = Math.max(0, monto - pagado);
+    
+    if (saldo > 0) {
+      acc[d.moneda] = (acc[d.moneda] || 0) + saldo;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -141,8 +157,8 @@ const Dashboard = () => {
         {/* Stats Grid */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
-            title="Total Deudas"
-            value={formatMoney(totalDeudasValue)}
+            title="Total Pendiente"
+            value={<MultiCurrencyDisplay totals={deudasPorMoneda} formatMoney={formatMoney} title="Total Pendiente" />}
             subtitle={`${deudasActivasCountValue} deudas activas`}
             icon={<CreditCard className="h-6 w-6 text-primary" />}
             trend="neutral"
@@ -290,6 +306,17 @@ const Dashboard = () => {
                                 locale: es,
                               })}
                             </p>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-5 px-1 text-[10px] text-muted-foreground hover:text-accent p-0 underline"
+                              onClick={() => {
+                                setEditingAbono(abono);
+                                setShowAbonoForm(true);
+                              }}
+                            >
+                              Editar
+                            </Button>
                           </div>
                           <span className="text-sm font-semibold text-accent">
                             -{formatMoney(Number(abono.monto_abonado), abono.moneda)}
@@ -317,9 +344,13 @@ const Dashboard = () => {
 
       <AbonoForm
         open={showAbonoForm}
-        onOpenChange={setShowAbonoForm}
+        onOpenChange={(open) => {
+          setShowAbonoForm(open);
+          if (!open) setEditingAbono(null);
+        }}
         onSuccess={loadData}
         deuda={selectedDeuda}
+        abonoToEdit={editingAbono}
       />
     </MainLayout>
   );

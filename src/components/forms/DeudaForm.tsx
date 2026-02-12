@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Deuda, MonedaCode } from "@/types/finance";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,24 +42,50 @@ const monedas: { code: MonedaCode; label: string }[] = [
 export const DeudaForm = ({ open, onOpenChange, onSuccess, deudaToEdit }: DeudaFormProps) => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState<Partial<Deuda>>(
-    deudaToEdit || {
-      descripcion: "",
-      acreedor: "",
-      monto_total: 0,
-      moneda: "USD",
-      fecha_pago_objetivo: "",
-      recordatorio: true,
-      interes_aplicado: false,
-      tasa_interes: 0,
+  const [formData, setFormData] = useState<Partial<Deuda>>({
+    descripcion: "",
+    acreedor: "",
+    monto_total: 0,
+    moneda: "USD",
+    fecha_pago_objetivo: "",
+    recordatorio: true,
+    interes_aplicado: false,
+    tasa_interes: 0,
+  });
+
+  // Efecto para cargar datos cuando se edita
+  useEffect(() => {
+    if (open) {
+      if (deudaToEdit) {
+        setFormData({
+          ...deudaToEdit,
+          // Asegurarse de que la fecha esté en formato YYYY-MM-DD para el input date
+          fecha_pago_objetivo: deudaToEdit.fecha_pago_objetivo 
+            ? new Date(deudaToEdit.fecha_pago_objetivo).toISOString().split('T')[0] 
+            : ""
+        });
+      } else {
+        resetForm();
+      }
     }
-  );
+  }, [open, deudaToEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.descripcion || !formData.monto_total || !formData.fecha_pago_objetivo) {
       toast.error("Por favor completa todos los campos obligatorios");
+      return;
+    }
+
+    // Validar fecha no anterior a hoy (solo para nuevas o si se cambió)
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fechaSeleccionada = new Date(formData.fecha_pago_objetivo);
+    fechaSeleccionada.setHours(0, 0, 0, 0);
+
+    if (fechaSeleccionada < hoy) {
+      toast.error("La fecha de pago no puede ser anterior al día de hoy");
       return;
     }
 

@@ -1,5 +1,6 @@
 // API Service para conectar con el backend
-const API_URL = 'https://zeniith-back.onrender.com';
+const API_URL = 'http://localhost:3000';
+//const API_URL = 'https://zeniith-back.onrender.com';
 
 // Helper para obtener el token del localStorage
 const getToken = (): string | null => {
@@ -232,6 +233,54 @@ export const apiCreateAbono = async (abono: AbonoInput): Promise<ApiResponse<Abo
     };
   } catch (error) {
     console.error('Error en apiCreateAbono:', error);
+    return { success: false, error: 'Error de conexión con el servidor' };
+  }
+};
+
+export const apiUpdateAbono = async (id: number, abono: Partial<AbonoInput>): Promise<ApiResponse<AbonoResponse>> => {
+  try {
+    const response = await fetch(`${API_URL}/abonos/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(abono),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.message || 'Error al actualizar el abono' };
+    }
+
+    return { 
+      success: true, 
+      data: {
+        abono: data.abono,
+        nuevo_saldo: data.nuevo_saldo,
+        estado_deuda: data.estado_deuda
+      }
+    };
+  } catch (error) {
+    console.error('Error en apiUpdateAbono:', error);
+    return { success: false, error: 'Error de conexión con el servidor' };
+  }
+};
+
+export const apiDeleteAbono = async (id: number): Promise<ApiResponse<void>> => {
+  try {
+    const response = await fetch(`${API_URL}/abonos/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.message || 'Error al eliminar el abono' };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error en apiDeleteAbono:', error);
     return { success: false, error: 'Error de conexión con el servidor' };
   }
 };

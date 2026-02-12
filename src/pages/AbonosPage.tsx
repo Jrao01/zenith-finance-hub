@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { MultiCurrencyDisplay } from "@/components/dashboard/MultiCurrencyDisplay";
 
 const AbonosPage = () => {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ const AbonosPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDeuda, setFilterDeuda] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
+  const [editingAbono, setEditingAbono] = useState<Abono | null>(null);
 
   const loadData = async () => {
     if (!user) return;
@@ -115,7 +117,25 @@ const AbonosPage = () => {
     }).format(amount);
   };
 
-  const totalAbonado = abonos.reduce((sum, a) => sum + Number(a.monto_abonado), 0);
+  const totalAbonadoValue = abonos.reduce((sum, a) => sum + Number(a.monto_abonado), 0);
+
+  // Calcular totales y promedios por moneda
+  const abonosPorMoneda = abonos.reduce((acc, a) => {
+    if (!acc[a.moneda]) acc[a.moneda] = { total: 0, count: 0 };
+    acc[a.moneda].total += Number(a.monto_abonado);
+    acc[a.moneda].count += 1;
+    return acc;
+  }, {} as Record<string, { total: number, count: number }>);
+
+  const totalesPorMoneda = Object.keys(abonosPorMoneda).reduce((acc, k) => {
+    acc[k] = abonosPorMoneda[k].total;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const promediosPorMoneda = Object.keys(abonosPorMoneda).reduce((acc, k) => {
+    acc[k] = abonosPorMoneda[k].total / abonosPorMoneda[k].count;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <MainLayout>
@@ -146,9 +166,19 @@ const AbonosPage = () => {
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/10">
                   <TrendingDown className="h-6 w-6 text-accent" />
                 </div>
-                <div>
+                <div className="flex-1 overflow-hidden">
                   <p className="text-sm text-muted-foreground">Total Abonado</p>
-                  <p className="text-2xl font-bold">{isLoading ? "---" : formatMoney(totalAbonado)}</p>
+                  <div className="mt-1">
+                    {isLoading ? (
+                      <div className="text-2xl font-bold">---</div>
+                    ) : (
+                      <MultiCurrencyDisplay 
+                        totals={totalesPorMoneda} 
+                        formatMoney={formatMoney} 
+                        title="Resumen de Abonos" 
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -172,11 +202,19 @@ const AbonosPage = () => {
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary/30">
                   <TrendingDown className="h-6 w-6 text-secondary-foreground" />
                 </div>
-                <div>
+                <div className="flex-1 overflow-hidden">
                   <p className="text-sm text-muted-foreground">Promedio por Abono</p>
-                  <p className="text-2xl font-bold">
-                    {isLoading ? "---" : formatMoney(abonos.length > 0 ? totalAbonado / abonos.length : 0)}
-                  </p>
+                  <div className="mt-1">
+                    {isLoading ? (
+                      <div className="text-2xl font-bold">---</div>
+                    ) : (
+                      <MultiCurrencyDisplay 
+                        totals={promediosPorMoneda} 
+                        formatMoney={formatMoney} 
+                        title="Promedio por Moneda" 
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -271,6 +309,17 @@ const AbonosPage = () => {
                         <p className="text-xs text-muted-foreground">
                           Restante: {formatMoney(Number(abono.restante_actual), deuda?.moneda)}
                         </p>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-[10px] mt-1 text-muted-foreground hover:text-accent"
+                          onClick={() => {
+                            setEditingAbono(abono);
+                            setShowAbonoForm(true);
+                          }}
+                        >
+                          Editar
+                        </Button>
                       </div>
                     </div>
                   );
@@ -283,9 +332,13 @@ const AbonosPage = () => {
 
       <AbonoForm
         open={showAbonoForm}
-        onOpenChange={setShowAbonoForm}
+        onOpenChange={(open) => {
+          setShowAbonoForm(open);
+          if (!open) setEditingAbono(null);
+        }}
         onSuccess={loadData}
         deuda={selectedDeuda}
+        abonoToEdit={editingAbono}
       />
     </MainLayout>
   );
